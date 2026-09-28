@@ -47,6 +47,6 @@ jobs:
       - name: Start Amplify deployment
         run: |
           aws amplify start-job \
-            --app-id diwxsso3183a1 \
+            --app-id diwsxso3183a1 \
             --branch-name qa \
             --job-type RELEASE
