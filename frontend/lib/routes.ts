@@ -19,7 +19,7 @@ export const USERS_ROUTES = {
     CREATE: '/dashboard/users/new',
     // Query-string id, not a dynamic path segment: static export requires
     // generateStaticParams() to enumerate every path at build time, which is
-    // impossible for arbitrary user ids — see nextjs/app/dashboard/(modules)/users/edit/page.tsx.
+    // impossible for arbitrary user ids — see frontend/app/dashboard/(modules)/users/edit/page.tsx.
     edit: (id: string) => `/dashboard/users/edit?id=${id}` as const,
 } as const;
 

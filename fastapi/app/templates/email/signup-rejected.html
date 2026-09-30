@@ -1,0 +1,9 @@
+{% extends "_layout.html" %}
+{% block preheader %}An update regarding a {{ app_name }} signup request.{% endblock %}
+{% block content %}
+{% import "_macros.html" as macros %}
+<h1 style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:28px;font-weight:700;color:#f9f4ed;">Hi {{ display_name }},</h1>
+<p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#f9f4ed;">Interest in {{ app_name }} is appreciated. The signup request has been reviewed by an administrator and has not been approved at this time.</p>
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#f9f4ed;">No account has been created for this email address, and no further action is required.</p>
+{{ macros.note("Questions regarding this decision, or requests for further information, may be directed to an administrator.") }}
+{% endblock %}

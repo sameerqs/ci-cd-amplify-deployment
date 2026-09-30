@@ -1,0 +1,11 @@
+{% extends "_layout.html" %}
+{% block preheader %}Secure sign-in link for {{ app_name }} — expires in {{ ttl_minutes }} minutes.{% endblock %}
+{% block content %}
+{% import "_macros.html" as macros %}
+<h1 style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:28px;font-weight:700;color:#f9f4ed;">Hi {{ display_name }},</h1>
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#f9f4ed;">Use the button below to securely sign in to {{ app_name }}. No password is required — this link is sufficient on its own.</p>
+{{ macros.button(magic_url, "Sign In to " ~ app_name) }}
+<p style="margin:28px 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;color:#c0b6a5;">If the button does not work, copy and paste the following link into a browser:</p>
+{{ macros.link_box(magic_url) }}
+{{ macros.note("This link is intended only for " ~ display_name ~ " and expires " ~ ttl_minutes ~ " minutes after this email was sent. If it was not requested, it can safely be ignored — no changes will be made to the account.") }}
+{% endblock %}

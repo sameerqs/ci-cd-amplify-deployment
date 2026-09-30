@@ -1,0 +1,261 @@
+name: QA - Backend CI/CD
+
+on:
+  push:
+    branches:
+      - qa
+    paths:
+      - 'fastapi/**'
+      - '.github/workflows/backend-qa.yml'
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: backend-qa-deployment
+  cancel-in-progress: true
+
+env:
+  # Repo-level, non-secret config shared across workflows: Settings ->
+  # Secrets and variables -> Actions -> Variables tab.
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+  IAM_ROLE_ARN: ${{ vars.BACKEND_DEPLOY_ROLE_ARN }}
+  CONTAINER_NAME: ${{ vars.ECR_REPOSITORY }}
+  # Path only, not values -- non-secret. The instance fetches the actual
+  # parameters itself, at deploy time, using its own IAM role; this workflow
+  # (and the GitHub Actions runner it runs on) never sees the contents.
+  PARAMETER_STORE_PATH: /pet2text/qa
+
+jobs:
+  test:
+    name: Lint and test backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: fastapi
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pet2text
+          POSTGRES_PASSWORD: pet2text
+          POSTGRES_DB: pet2text_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U pet2text"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      TEST_DATABASE_URL: postgresql://pet2text:pet2text@localhost:5432/pet2text_test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: '0.12.10'
+          enable-cache: true
+          cache-dependency-glob: fastapi/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Format check (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy --strict)
+        run: uv run mypy --strict app scripts tests
+
+      - name: Test (pytest, migrations run against the service Postgres)
+        run: uv run pytest --cov
+
+  build-and-push:
+    name: Build and push image to ECR
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.IAM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image
+        working-directory: fastapi
+        run: docker build -t "${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ github.sha }}" .
+
+      - name: Push image (immutable commit-SHA tag)
+        run: docker push "${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ github.sha }}"
+
+  deploy:
+    name: Deploy to EC2 via SSM
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.IAM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render remote deploy script
+        run: |
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${{ github.sha }}"
+          cat > deploy-remote.sh <<EOF
+          #!/bin/bash
+          set -euo pipefail
+
+          IMAGE_URI="${IMAGE_URI}"
+          CONTAINER_NAME="${CONTAINER_NAME}"
+          PARAM_PATH="${PARAMETER_STORE_PATH}"
+          AWS_REGION="${AWS_REGION}"
+
+          aws ecr get-login-password --region "\$AWS_REGION" \
+            | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+          docker pull "\$IMAGE_URI"
+
+          # Fetch this deploy's application config from SSM Parameter Store
+          # using the EC2 instance's own IAM role -- GitHub Actions never
+          # requests or sees these values. Parameters live under \$PARAM_PATH
+          # as SecureString, decrypted via the account's KMS key as part of
+          # this call. Written to a root-only (600), single-use temp file
+          # just long enough for \`docker run\` to read it at container
+          # creation time, then deleted; values are never echoed, so they
+          # never reach SSM output, CloudWatch, or the GitHub Actions log.
+          ENV_FILE="\$(mktemp /tmp/${CONTAINER_NAME}.env.XXXXXX)"
+          chmod 600 "\$ENV_FILE"
+          trap 'rm -f "\$ENV_FILE"' EXIT
+
+          aws ssm get-parameters-by-path \
+            --region "\$AWS_REGION" \
+            --path "\$PARAM_PATH" \
+            --recursive \
+            --with-decryption \
+            --query 'Parameters[*].[Name,Value]' \
+            --output text \
+            | while IFS=\$'\t' read -r name value; do
+                printf '%s=%s\n' "\${name##*/}" "\$value"
+              done > "\$ENV_FILE"
+
+          if [ ! -s "\$ENV_FILE" ]; then
+            echo "No parameters found under \$PARAM_PATH -- refusing to start container with empty config" >&2
+            exit 1
+          fi
+
+          # Run migrations against the same host PostgreSQL the app container
+          # will use, with the same SSM-derived config, before touching the
+          # running container -- a failed migration exits (set -e) here and
+          # leaves the current deployment untouched.
+          echo "Running database migrations..."
+          docker run --rm \
+            --add-host=host.docker.internal:host-gateway \
+            --env-file "\$ENV_FILE" \
+            "\$IMAGE_URI" \
+            alembic upgrade head
+
+          # Safe to rerun: remove any container left from a prior (possibly
+          # failed) deploy before starting the new one, so old and new never
+          # run side by side under the same name.
+          docker rm -f "\$CONTAINER_NAME" >/dev/null 2>&1 || true
+
+          docker run -d \
+            --name "\$CONTAINER_NAME" \
+            --restart unless-stopped \
+            --add-host=host.docker.internal:host-gateway \
+            --env-file "\$ENV_FILE" \
+            -p 127.0.0.1:8000:8000 \
+            "\$IMAGE_URI"
+
+          # The container has already read the file into its own config at
+          # this point; docker never re-reads --env-file afterward, so there
+          # is no reason to keep the secret on disk any longer than this.
+          rm -f "\$ENV_FILE"
+          trap - EXIT
+
+          # Wait on the container's own HEALTHCHECK (Dockerfile: GET /api/health,
+          # start-period 20s, interval 10s, retries 5) rather than reimplementing
+          # the probe here.
+          ATTEMPTS=40
+          for i in \$(seq 1 "\$ATTEMPTS"); do
+            STATUS="\$(docker inspect -f '{{.State.Health.Status}}' "\$CONTAINER_NAME" 2>/dev/null || echo starting)"
+            if [ "\$STATUS" = "healthy" ]; then
+              echo "Deployment healthy: \$IMAGE_URI"
+              docker image prune -f >/dev/null 2>&1 || true
+              exit 0
+            fi
+            if [ "\$STATUS" = "unhealthy" ]; then
+              echo "Container reported unhealthy" >&2
+              docker logs --tail 100 "\$CONTAINER_NAME" >&2 || true
+              exit 1
+            fi
+            if [ "\$i" -eq "\$ATTEMPTS" ]; then
+              echo "Timed out waiting for a healthy status (last: \$STATUS)" >&2
+              docker logs --tail 100 "\$CONTAINER_NAME" >&2 || true
+              exit 1
+            fi
+            sleep 3
+          done
+          EOF
+          cat deploy-remote.sh
+
+      - name: Send deployment command via SSM
+        run: |
+          jq -Rsc '{commands: split("\n")}' deploy-remote.sh > ssm-params.json
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${EC2_INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy pet2text-backend-qa ${{ github.sha }}" \
+            --timeout-seconds 300 \
+            --parameters file://ssm-params.json \
+            --query "Command.CommandId" \
+            --output text)
+          echo "COMMAND_ID=$COMMAND_ID" >> "$GITHUB_ENV"
+          echo "SSM command id: $COMMAND_ID"
+
+      - name: Wait for deployment to finish
+        run: |
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${EC2_INSTANCE_ID}" || true
+
+      - name: Show deployment output and fail on error
+        run: |
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${EC2_INSTANCE_ID}" \
+            --query "{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
+            --output json > invocation.json
+          cat invocation.json
+          STATUS=$(jq -r .Status invocation.json)
+          if [ "$STATUS" != "Success" ]; then
+            echo "Deployment failed with status: $STATUS" >&2
+            exit 1
+          fi

@@ -1,0 +1,11 @@
+{% extends "_layout.html" %}
+{% block preheader %}A {{ app_name }} account has been restored and sign-in access is available again.{% endblock %}
+{% block content %}
+{% import "_macros.html" as macros %}
+<h1 style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:28px;font-weight:700;color:#f9f4ed;">Hi {{ display_name }},</h1>
+<p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#f9f4ed;">The {{ app_name }} account has been restored by an administrator. Sign-in access has been reinstated, and all existing data remains available.</p>
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#f9f4ed;">Signing in with this email address will send a secure, one-time sign-in link.</p>
+{{ macros.button(login_url, "Sign in to " ~ app_name) }}
+<p style="margin:28px 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;color:#c0b6a5;">If the button does not work, copy and paste the following link into a browser:</p>
+{{ macros.link_box(login_url) }}
+{% endblock %}

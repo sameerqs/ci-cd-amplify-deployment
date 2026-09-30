@@ -1,0 +1,14 @@
+.venv
+.git
+.env
+.env.*
+tests
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+__pycache__
+*.pyc
+deploy
+README.md
