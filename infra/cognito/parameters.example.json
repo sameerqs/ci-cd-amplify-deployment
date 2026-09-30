@@ -1,0 +1,10 @@
+{
+  "EnvironmentName": "pet2text",
+  "CallbackURL": "https://app.example.com",
+  "LogoutURL": "https://app.example.com/login",
+  "SmsExternalId": "replace-with-random-external-id",
+  "FromEmail": "no-reply@example.com",
+  "ReplyToEmail": "support@example.com",
+  "MfaConfiguration": "OPTIONAL",
+  "EnableSmsMfa": "true"
+}

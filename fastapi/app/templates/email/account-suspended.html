@@ -1,0 +1,9 @@
+{% extends "_layout.html" %}
+{% block preheader %}A {{ app_name }} account has been suspended.{% endblock %}
+{% block content %}
+{% import "_macros.html" as macros %}
+<h1 style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:22px;line-height:28px;font-weight:700;color:#f9f4ed;">Hi {{ display_name }},</h1>
+<p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#f9f4ed;">This is a notice that the {{ app_name }} account has been suspended by an administrator. While suspended, sign-in and app access are disabled, and all active sessions have been ended.</p>
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#f9f4ed;">Associated pets, conversations and records have not been deleted, and will remain available if access is restored.</p>
+{{ macros.note("For details on this suspension, or to request that access be restored, contact an administrator.") }}
+{% endblock %}

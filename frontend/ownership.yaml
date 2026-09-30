@@ -1,0 +1,36 @@
+version: 1.0.0
+default: frontend
+
+agents:
+  frontend:
+    - app/**
+    - components/**
+    - hooks/**
+    - lib/**
+    - types/**
+    - public/**
+    - assets/**
+    - middleware.ts
+    - components.json
+    - package.json
+    - package-lock.json
+    - tsconfig.json
+    - next.config.ts
+    - postcss.config.mjs
+    - eslint.config.mjs
+    - vitest.config.ts
+    - Dockerfile
+  devops:
+    - Dockerfile
+  docs:
+    - README.md
+    - "**/*.md"
+  test-automation:
+    - "**/*.test.ts"
+    - "**/*.test.tsx"
+  architecture:
+    - README.md
+  backend: []
+  product: []
+  survey: []
+  minimal-change: []

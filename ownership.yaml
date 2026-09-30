@@ -1,36 +1,29 @@
 version: 1.0.0
-default: frontend
+default: backend
 
 agents:
+  backend:
+    - fastapi/**
   frontend:
-    - app/**
-    - components/**
-    - hooks/**
-    - lib/**
-    - types/**
-    - public/**
-    - assets/**
-    - middleware.ts
-    - components.json
-    - package.json
-    - package-lock.json
-    - tsconfig.json
-    - next.config.ts
-    - postcss.config.mjs
-    - eslint.config.mjs
-    - vitest.config.ts
-    - Dockerfile
+    - frontend/**
   devops:
-    - Dockerfile
+    - .github/workflows/**
+    - docker-compose*.yml
+    - infra/**
+    - scripts/**
   docs:
+    - docs/**
     - README.md
+    - AGENTS.md
+    - CLAUDE.md
     - "**/*.md"
   test-automation:
-    - "**/*.test.ts"
-    - "**/*.test.tsx"
+    - fastapi/tests/**
   architecture:
-    - README.md
-  backend: []
-  product: []
+    - docs/**
+    - CLAUDE.md
+    - AGENTS.md
+  product:
+    - docs/SPEC.md
   survey: []
   minimal-change: []

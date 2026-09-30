@@ -1,0 +1,84 @@
+[project]
+name = "pet2text-fastapi"
+version = "1.0.0"
+description = "Pet2text FastAPI backend starter"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "sqlalchemy[asyncio]>=2.0.52,<2.1",
+    "asyncpg>=0.31.0",
+    "alembic>=1.19.2",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "pyjwt[crypto]>=2.13.0",
+    "bcrypt>=5.0.0",
+    "boto3>=1.40.0",
+    "cryptography>=44.0.0",
+    "jinja2>=3.1.6",
+    "email-validator>=2.3.0",
+    "langchain>=1.4.0,<2",
+    "langchain-openai>=1.6.2,<2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "httpx>=0.28.1",
+    "ruff>=0.16.6",
+    "mypy>=2.3.1",
+    "pre-commit>=4.0.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP", "N", "S", "SIM", "ASYNC", "T20", "RUF"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108"]
+"scripts/**" = ["T201"]
+"app/modules/cognito/**" = ["S105"]
+"app/core/cognito_jwt.py" = ["S105"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests", "scripts"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+files = ["app", "tests", "scripts"]
+exclude = ["^alembic/"]
+
+[[tool.mypy.overrides]]
+module = ["boto3", "botocore.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+addopts = "-q --strict-markers"
+markers = [
+    "llm_eval: hits the real OpenAI API against PET-8's fixed prompt sets; needs a real OPENAI_API_KEY and is skipped otherwise",
+]
+
+[tool.coverage.run]
+source = ["app", "scripts"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_also = ["if TYPE_CHECKING:", "if __name__ == .__main__.:"]

@@ -1,0 +1,105 @@
+# Local development stack for the backend: Postgres + the FastAPI API.
+#
+# Frontend (frontend/) is not part of this stack: it deploys to AWS Amplify
+# via .github/workflows/deploy-amplify.yml and is never containerized, in dev
+# or prod alike — run it locally with `npm run dev` inside frontend/.
+#
+# Backend deployment is .github/workflows/backend-qa.yml (build -> ECR ->
+# SSM -> EC2). This file is the one-command local equivalent of that image,
+# not the deploy topology.
+#
+# Auth is AWS Cognito (see infra/cognito/README.md to provision the user pool;
+# fastapi/.env.example documents every AWS_* and COGNITO_* value). The browser
+# never talks to the pool, so the client needs no Cognito config of its own.
+#
+#   cp fastapi/.env.example fastapi/.env     # fill PEPPER_SECRET, AWS_*, COGNITO_*
+#   docker compose up --build
+#
+# `migrate` runs `alembic upgrade head` once and exits; `api` waits for it to
+# finish, so schema and app never race on a cold start.
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: pet2text-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pet2text}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pet2text}
+    ports:
+      - "${POSTGRES_PUBLISH:-127.0.0.1:5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pet2text} -d ${POSTGRES_DB:-pet2text}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - pet2text_pgdata:/var/lib/postgresql
+    networks: [pet2text]
+    restart: unless-stopped
+
+  migrate:
+    build: ./fastapi
+    image: pet2text-api:local
+    container_name: pet2text-migrate
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: fastapi/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pet2text}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pet2text}
+      RUN_SEED: ${RUN_SEED:-false}
+    networks: [pet2text]
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        alembic upgrade head
+        if [ "$${RUN_SEED}" = "true" ]; then python -m scripts.seed; else echo "RUN_SEED != true; skipping seed"; fi
+
+  api:
+    image: pet2text-api:local
+    container_name: pet2text-api
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: fastapi/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pet2text}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pet2text}
+      # why: uvicorn trusts X-Forwarded-For only from this peer. Pinning the subnet below
+      # keeps the gateway address stable; a wrong value collapses every IP-keyed rate
+      # limit into a single bucket.
+      FORWARDED_ALLOW_IPS: ${TRUSTED_PROXY_IPS:-172.21.0.1}
+      # why: Cognito's AdminGetUser/AdminCreateUser are SigV4-signed, so without
+      # credentials they fail and no pool user is ever created -- which is what
+      # made every magic link unusable. HOME is pinned because botocore resolves
+      # the SSO token cache from $HOME/.aws/sso/cache, not from AWS_CONFIG_FILE.
+      AWS_PROFILE: ${AWS_PROFILE:-pet2text}
+      HOME: /app
+    volumes:
+      # Read-only: the container consumes the SSO token, `aws sso login` on the
+      # host is what refreshes it. NOTE: these credentials expire, so a lapsed
+      # SSO session breaks sign-in until someone logs in again on the host.
+      - ${HOME}/.aws:/app/.aws:ro
+    ports:
+      - "${API_PUBLISH:-127.0.0.1:8000}:8000"
+    networks: [pet2text]
+    stop_grace_period: 35s
+    restart: unless-stopped
+
+networks:
+  pet2text:
+    name: pet2text-network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+volumes:
+  pet2text_pgdata:
+    name: pet2text_pgdata

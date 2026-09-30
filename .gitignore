@@ -11,6 +11,7 @@ out/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.bak
 
 # Debug logs
 npm-debug.log*
@@ -19,3 +20,14 @@ pnpm-debug.log*
 
 # OS files
 .DS_Store
+
+# Python (fastapi backend)
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/

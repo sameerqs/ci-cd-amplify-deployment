@@ -1,0 +1,30 @@
+{# Shared, table-based building blocks for the transactional emails in this
+   folder. Kept inline-styled and table-based throughout so Outlook's Word
+   rendering engine and other stripped-down email clients still lay them out
+   correctly -- flex/grid and external stylesheets are not options here. #}
+
+{% macro button(url, label) -%}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:32px auto 0;">
+  <tr>
+    <td align="center" bgcolor="#f6a06b" style="border-radius:8px;">
+      <a href="{{ url }}" target="_blank" style="display:inline-block;padding:14px 36px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:20px;font-weight:700;color:#201e1d;text-decoration:none;border-radius:8px;">{{ label }}</a>
+    </td>
+  </tr>
+</table>
+{%- endmacro %}
+
+{% macro link_box(url) -%}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:20px;">
+  <tr>
+    <td bgcolor="#3a352d" style="border:1px solid #645c50;border-radius:6px;padding:14px 16px;font-family:'Courier New',Courier,monospace;font-size:13px;line-height:20px;color:#c0b6a5;word-break:break-all;">{{ url }}</td>
+  </tr>
+</table>
+{%- endmacro %}
+
+{% macro note(text) -%}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:24px;">
+  <tr>
+    <td bgcolor="#402310" style="border-radius:6px;padding:12px 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;color:#ffe1d0;">{{ text }}</td>
+  </tr>
+</table>
+{%- endmacro %}

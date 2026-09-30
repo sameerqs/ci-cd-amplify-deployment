@@ -1,0 +1,32 @@
+version: 1.0.0
+default: backend
+
+agents:
+  backend:
+    - app/**
+    - alembic/**
+    - scripts/**
+    - tests/**
+    - pyproject.toml
+    - uv.lock
+    - alembic.ini
+    - Dockerfile
+    - compose.yml
+    - .env.example
+    - .pre-commit-config.yaml
+    - .python-version
+  devops:
+    - deploy/**
+    - Dockerfile
+    - compose.yml
+  docs:
+    - README.md
+    - "**/*.md"
+  test-automation:
+    - tests/**
+  architecture:
+    - README.md
+  product: []
+  survey: []
+  minimal-change: []
+  frontend: []
