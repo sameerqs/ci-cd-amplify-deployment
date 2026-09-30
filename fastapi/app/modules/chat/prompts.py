@@ -9,8 +9,6 @@ absolute and asserted by tests in tests/api/test_chat_guardrails.py.
 
 from pydantic import BaseModel, Field
 
-
-
 # why: the notice is shown once per emergency episode, not once per message. A
 # real transcript ended as four identical red alarms because every flagged turn
 # re-sent this line, which trains people to ignore it. Past the notice the model
@@ -211,11 +209,9 @@ Keep these separate so I can hand over whichever is useful.
 """
 
 
-
 EMERGENCY_LINE = (
     "This sounds like it could be an emergency — please contact a vet or emergency clinic now."
 )
-
 
 
 class ExtractedEntry(BaseModel):

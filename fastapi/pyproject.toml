@@ -49,6 +49,7 @@ ignore = ["B008"]
 "scripts/**" = ["T201"]
 "app/modules/cognito/**" = ["S105"]
 "app/core/cognito_jwt.py" = ["S105"]
+"app/modules/chat/prompts.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "tests", "scripts"]
