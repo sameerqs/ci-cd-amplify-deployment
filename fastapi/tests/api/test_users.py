@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.constants import ACCOUNT_SUSPENDED
 from app.core.enums import UserStatus
 from app.core.errors import ConflictError
 from app.core.pagination import PageQuery
@@ -36,11 +37,9 @@ async def many_users(session: AsyncSession, roles: None) -> list[User]:
             await create_user(
                 session,
                 email=f"admin{index}@example.com",
-                role=UserRole.ADMIN,
-                status=UserStatus.ACTIVE if index != 3 else UserStatus.REJECTED,
+                status=UserStatus.ACTIVE if index != 3 else UserStatus.SUSPENDED,
             )
         )
-    created.append(await create_user(session, email="member@example.com", role=UserRole.USER))
     return created
 
 
@@ -54,17 +53,19 @@ async def test_list_users_defaults_and_facets(
     assert data["page"] == 1 and data["pageSize"] == 15
     assert data["totalRecords"] == 4 and data["totalPages"] == 1
     assert data["statusCounts"] == [
-        {"status": "active", "count": 3},
-        {"status": "inactive", "count": 1},
+        {"status": UserStatus.ACTIVE, "count": 3},
+        {"status": UserStatus.SUSPENDED, "count": 1},
     ]
-    assert data["roleCounts"] == [{"role": 1, "count": 4}]
     first = data["items"][0]
     assert set(first) == {
         "id",
         "email",
         "displayName",
-        "role",
+        "isSuperAdmin",
         "status",
+        "activatedAt",
+        "suspendedAt",
+        "suspendedById",
         "onboardingCompletedAt",
         "ageConfirmed",
         "betaDisclaimerAccepted",
@@ -85,10 +86,9 @@ async def test_list_users_filters_search_sort_and_paging(
         return [u["email"] for u in result.json()["data"]["items"]]
 
     assert await emails("search=admin1") == ["admin1@example.com"]
-    assert await emails("search=inactive") == ["admin3@example.com"]
-    assert await emails("isActive=false") == ["admin3@example.com"]
+    assert await emails("search=suspended") == ["admin3@example.com"]
+    assert await emails(f"status={UserStatus.SUSPENDED}") == ["admin3@example.com"]
     assert await emails("email=admin2") == ["admin2@example.com"]
-    assert await emails("role=2") == await emails("role=1")
     assert await emails("sort=email:desc") == [f"admin{i}@example.com" for i in (3, 2, 1, 0)]
     assert await emails("sort=displayName:asc,email:desc") == [
         "admin0@example.com",
@@ -128,11 +128,17 @@ def test_parse_created_range() -> None:
 
 def _super_admin_calls(other_id: UUID) -> list[tuple[str, str, dict[str, Any] | None]]:
     return [
-        ("POST", "/invite", {"email": "nia@example.com", "role": 1}),
+        ("POST", "/invite", {"email": "nia@example.com"}),
         ("GET", "/super-admin-exists", None),
         ("GET", "", None),
+        ("GET", "/picker", None),
+        ("GET", "/signups", None),
+        ("PATCH", "/signups/{signup_id}/approve", None),
+        ("PATCH", "/signups/{signup_id}/reject", None),
         ("GET", "/{user_id}", None),
         ("PATCH", "/{user_id}", {"isActive": False}),
+        ("PATCH", "/{user_id}/suspend", None),
+        ("PATCH", "/{user_id}/restore", None),
         ("DELETE", "/{user_id}", None),
     ]
 
@@ -142,6 +148,7 @@ def test_super_admin_call_table_covers_every_gated_route() -> None:
         (method, context.path)
         for context in iter_route_contexts(app.routes)
         if isinstance(context.route, APIRoute)
+        and (context.path or "").startswith(USERS)
         and super_admin_only.dependency
         in {dep.call for dep in context.route.dependant.dependencies}
         for method in context.route.methods or ()
@@ -152,19 +159,15 @@ def test_super_admin_call_table_covers_every_gated_route() -> None:
 async def test_role_gates(
     client: AsyncClient,
     admin_user: User,
-    plain_user: User,
-    admin_headers: dict[str, str],
+    super_admin_headers: dict[str, str],
     user_headers: dict[str, str],
 ) -> None:
-    for headers, other in ((admin_headers, plain_user), (user_headers, admin_user)):
-        for method, path, body in _super_admin_calls(other.id):
-            response = await client.request(
-                method, f"{USERS}{path.format(user_id=other.id)}", json=body, headers=headers
-            )
-            assert response.status_code == 403, (method, path, response.text)
-            assert response.json()["errors"][0]["code"] == "FORBIDDEN"
-    assert (await client.get(f"{USERS}/picker", headers=admin_headers)).status_code == 200
-    assert (await client.get(f"{USERS}/picker", headers=user_headers)).status_code == 403
+    for method, path, body in _super_admin_calls(admin_user.id):
+        url = f"{USERS}{path.format(user_id=admin_user.id, signup_id=uuid4())}"
+        response = await client.request(method, url, json=body, headers=user_headers)
+        assert response.status_code == 403, (method, path, response.text)
+        assert response.json()["errors"][0]["code"] == "FORBIDDEN"
+    assert (await client.get(f"{USERS}/picker", headers=super_admin_headers)).status_code == 200
 
 
 async def test_get_user_and_self_targeting(
@@ -186,7 +189,7 @@ async def test_invite_flow(
     super_admin_headers: dict[str, str],
     session: AsyncSession,
 ) -> None:
-    payload = {"email": "Nia@Example.com", "role": 1}
+    payload = {"email": "Nia@Example.com"}
     response = await client.post(f"{USERS}/invite", json=payload, headers=super_admin_headers)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -218,7 +221,7 @@ async def test_invite_sends_email_when_configured(
     monkeypatch.setattr("app.modules.users.service.send_email", fake_send)
     response = await client.post(
         f"{USERS}/invite",
-        json={"email": "mia@example.com", "role": 1},
+        json={"email": "mia@example.com"},
         headers=super_admin_headers,
     )
     assert response.status_code == 200
@@ -240,12 +243,15 @@ async def test_update_user_and_super_admin_singleton(
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["isActive"] is False
-    assert (await client.get("/api/v1/users/profile", headers=old_headers)).status_code == 401
+    blocked = await client.get("/api/v1/users/profile", headers=old_headers)
+    assert blocked.status_code == 403
+    assert blocked.json()["errors"][0]["code"] == ACCOUNT_SUSPENDED
+    # why: there is exactly one Super Admin, set by the seed; the API has no way
+    # to promote anyone, so a role field is rejected outright.
     promote = await client.patch(
         f"{USERS}/{admin_user.id}", json={"role": 0}, headers=super_admin_headers
     )
-    assert promote.status_code == 409
-    assert "Super Admin already exists" in promote.json()["message"]
+    assert promote.status_code == 422
     extra = await client.patch(
         f"{USERS}/{admin_user.id}", json={"email": "x@y.z"}, headers=super_admin_headers
     )
@@ -268,7 +274,7 @@ async def test_soft_delete_anonymises_email(
     ).status_code == 404
     reinvite = await client.post(
         f"{USERS}/invite",
-        json={"email": original, "role": 1},
+        json={"email": original},
         headers=super_admin_headers,
     )
     assert reinvite.status_code == 200
@@ -297,11 +303,11 @@ async def test_picker_and_super_admin_exists(
     picker = await client.get(f"{USERS}/picker", headers=super_admin_headers)
     names = [option["label"] for option in picker.json()["data"]["items"]]
     # The label is the email now: it is the only name this product holds.
+    # Active accounts only, and never the Super Admin themselves.
     assert names == [
         "admin0@example.com",
         "admin1@example.com",
         "admin2@example.com",
-        "root@example.com",
     ]
     exists = await client.get(f"{USERS}/super-admin-exists", headers=super_admin_headers)
     assert exists.json()["data"] == {"exists": True}

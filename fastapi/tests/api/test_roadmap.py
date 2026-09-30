@@ -131,11 +131,11 @@ async def test_list_forbidden_for_plain_user(
 
 
 async def test_create_item(
-    client: AsyncClient, admin_headers: dict[str, str], admin_user: User
+    client: AsyncClient, super_admin_headers: dict[str, str], super_admin: User
 ) -> None:
     res = await client.post(
         ITEMS,
-        headers=admin_headers,
+        headers=super_admin_headers,
         json={"title": "Multi-pet timeline", "description": "One feed across every pet"},
     )
 
@@ -144,7 +144,7 @@ async def test_create_item(
     assert data["title"] == "Multi-pet timeline"
     assert data["isActive"] is True
     assert data["yesCount"] == 0
-    assert data["createdById"] == str(admin_user.id)
+    assert data["createdById"] == str(super_admin.id)
 
 
 async def test_create_rejects_a_duplicate_title_case_insensitively(
@@ -198,15 +198,15 @@ async def test_get_unknown_item_is_not_found(
 
 async def test_update_retitles_and_deactivates(
     client: AsyncClient,
-    admin_headers: dict[str, str],
-    admin_user: User,
+    super_admin_headers: dict[str, str],
+    super_admin: User,
     make_item: Callable[..., Any],
 ) -> None:
     item = await make_item()
 
     res = await client.patch(
         f"{ITEMS}/{item.id}",
-        headers=admin_headers,
+        headers=super_admin_headers,
         json={"title": "Wearable sync v2", "isActive": False},
     )
 
@@ -214,7 +214,7 @@ async def test_update_retitles_and_deactivates(
     data = res.json()["data"]
     assert data["title"] == "Wearable sync v2"
     assert data["isActive"] is False
-    assert data["updatedById"] == str(admin_user.id)
+    assert data["updatedById"] == str(super_admin.id)
 
 
 async def test_update_rejects_a_title_taken_by_another_item(

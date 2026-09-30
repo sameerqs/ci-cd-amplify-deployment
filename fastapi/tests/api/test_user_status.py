@@ -37,10 +37,7 @@ async def test_invite_display_name_falls_back_to_the_email(
 ) -> None:
     # why: full_name is gone; displayName is now composed on read from the name
     # parts, falling back to the email when there are none.
-    payload = {
-        "email": "ada@example.com",
-        "role": 1,
-    }
+    payload = {"email": "ada@example.com"}
     response = await client.post(f"{USERS}/invite", json=payload, headers=super_admin_headers)
     assert response.status_code == 200, response.text
     assert response.json()["data"]["displayName"] == response.json()["data"]["email"]
