@@ -190,7 +190,7 @@ jobs:
             --restart unless-stopped \
             --add-host=host.docker.internal:host-gateway \
             --env-file "\$ENV_FILE" \
-            -p 127.0.0.1:8000:8000 \
+            -p 8000:8000 \
             "\$IMAGE_URI"
 
           # The container has already read the file into its own config at
