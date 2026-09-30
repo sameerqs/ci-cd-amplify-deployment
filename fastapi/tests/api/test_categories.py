@@ -101,11 +101,11 @@ async def test_list_forbidden_for_plain_user(
 
 
 async def test_create_category(
-    client: AsyncClient, admin_headers: dict[str, str], admin_user: Any
+    client: AsyncClient, super_admin_headers: dict[str, str], super_admin: Any
 ) -> None:
     res = await client.post(
         CATEGORIES,
-        headers=admin_headers,
+        headers=super_admin_headers,
         json={"name": "Medication", "description": "Dosage and schedule notes"},
     )
 
@@ -113,7 +113,7 @@ async def test_create_category(
     data = res.json()["data"]
     assert data["name"] == "Medication"
     assert data["isActive"] is True
-    assert data["createdById"] == str(admin_user.id)
+    assert data["createdById"] == str(super_admin.id)
 
 
 async def test_create_rejects_a_duplicate_name_case_insensitively(
@@ -163,15 +163,15 @@ async def test_get_unknown_category_is_not_found(
 
 async def test_update_renames_and_deactivates(
     client: AsyncClient,
-    admin_headers: dict[str, str],
-    admin_user: Any,
+    super_admin_headers: dict[str, str],
+    super_admin: Any,
     make_category: Callable[..., Any],
 ) -> None:
     category = await make_category()
 
     res = await client.patch(
         f"{CATEGORIES}/{category.id}",
-        headers=admin_headers,
+        headers=super_admin_headers,
         json={"name": "Grooming & coat", "isActive": False},
     )
 
@@ -179,7 +179,7 @@ async def test_update_renames_and_deactivates(
     data = res.json()["data"]
     assert data["name"] == "Grooming & coat"
     assert data["isActive"] is False
-    assert data["updatedById"] == str(admin_user.id)
+    assert data["updatedById"] == str(super_admin.id)
 
 
 async def test_update_can_clear_the_description(
